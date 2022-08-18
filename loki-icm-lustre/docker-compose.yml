@@ -1,0 +1,63 @@
+# See https://gitlab.com/icm-institute/iconics/xnat/xnat-docker-compose-icm-fork/-/blob/develop/docker-compose.staging.yml
+version: '3.7'
+
+networks:
+  default:
+    name: external-network
+    driver: bridge
+
+volumes:
+  lustre_logs:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: "addr=nfsl2export.icm-institute.org,nolock,soft,rw"
+      device: ':/network/lustre/iss02/xnat-staging/home/logs'
+
+# Graphana : Monitoring. Groups many monitoring dashboards in a single page.
+  grafana:
+    image: grafana/grafana:8.3.4-ubuntu
+    restart: unless-stopped
+    env_file:
+      - ./grafana/config.monitoring
+    user: "472"
+    depends_on:
+      - prometheus
+    volumes:
+      - ./grafana/provisioning/:/etc/grafana/provisioning/
+      - grafana_data:/var/lib/grafana
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.grafana.rule=Host(`grafana.localhost`)"
+      - "traefik.http.services.grafana.loadbalancer.server.port=3000"
+      - "traefik.http.routers.grafana.entrypoints=web"
+    ports:
+      - 44970:3000
+
+
+# Loki stores logs for Prometheus.
+  loki:
+    image: grafana/loki:2.6.1
+    volumes:
+      - ./loki/loki-local-config.yaml:/etc/loki/local-config.yaml
+    command: -config.file=/etc/loki/local-config.yaml
+    ports:
+      - "3100:3100"
+
+# Promtail is an agent to send logs to loki.
+  promtail:
+    image: grafana/promtail:2.6.1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./promtail/promtail-docker-config.yaml:/etc/promtail/config.yml
+      - /var/log:/var/log
+      # Local development
+      # - ./xnat-data/home/logs:/data/xnat/home/logs
+      # Staging
+      - type: volume
+        source: lustre_logs
+        target: ${XNAT_HOME}/logs
+        volume:
+          nocopy: true
+    user: "${DOCKER_UID}:${DOCKER_GID}"
+    command: -config.file=/etc/promtail/config.yml

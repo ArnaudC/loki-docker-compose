@@ -1,3 +1,5 @@
+# This file is a copy of the docker local /etc/loki/local-config.yaml file.
+# If you need to modify this file, mount it in the container.
 auth_enabled: false
 
 
